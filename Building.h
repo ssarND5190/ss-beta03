@@ -10,6 +10,8 @@
 
 using namespace std;
 
+void clearBDdiffuse();
+
 class Building {
 public:
 	int16_t x;
@@ -37,7 +39,7 @@ public:
 	void getVelocity();
 	void forceMove();
 	void gradianMove();
-	void diffuse();
+	void diffuse(int trd);
 	void getScore();
 	void getList();
 	void getList2x();

@@ -20,8 +20,31 @@ extern float mapVal1[MAPX][MAPY];
 extern float mapVal2[MAPX][MAPY];
 
 extern vecForce mapForce[MAPX][MAPY];
-
 extern Building buildings[BD_MUN];
+
+int8_t diffDir[MAPX][MAPY];
+int8_t dJump[MAPX][MAPY];
+bool isDiff[MAPX][MAPY];
+int diffDist[MAPX][MAPY];
+loc elm[DSTS][ELMS];
+
+void clearBDdiffuse()
+{
+    for (int i = 0; i < MAPX; i++) {
+        for (int j = 0; j < MAPY; j++) {
+            //diffDir[i][j] = -1;
+            dJump[i][j] = -1;
+            isDiff[i][j] = false;
+            diffDist[i][j] = INT_MAX;
+        }
+    }
+    /*
+    for (int i = 0; i < DSTS; i++) {
+        for (int j = 0; j < ELMS; j++) {
+            elm[i][j] = loc();
+        }
+    }*/
+}
 
 Building::Building()
 {
@@ -248,44 +271,12 @@ void Building::gradianMove()
     }
 }
 
-void Building::diffuse()
+void Building::diffuse(int trd)
 {
-    int8_t** diffDir = NULL;
-    int8_t** dJump = NULL;
-    bool** isDiff = NULL;
-    int** diffDist = NULL;
-    loc** elm = NULL;
-    diffDir = new int8_t * [MAPX];
-    dJump = new int8_t * [MAPX];
-    isDiff = new bool* [MAPX];
-    diffDist = new int* [MAPX];
-    elm = new loc* [DSTS];
-    for (int i = 0; i < MAPX; i++) {
-        diffDir[i] = new int8_t[MAPY];
-        dJump[i] = new int8_t[MAPY];
-        isDiff[i] = new bool[MAPY];
-        diffDist[i] = new int[MAPY];
-    }
-    for (int i = 0; i < DSTS; i++) {
-        elm[i] = new loc[ELMS];
-    }
-    for (int i = 0; i < MAPX; i++) {
-        for (int j = 0; j < MAPY; j++) {
-            diffDir[i][j] = -1;
-            dJump[i][j] = -1;
-            isDiff[i][j] = false;
-            diffDist[i][j] = INT_MAX;
-        }
-    }
-    for (int i = 0; i < DSTS; i++) {
-        for (int j = 0; j < ELMS; j++) {
-            elm[i][j] = loc();
-        }
-    }
+    clearBDdiffuse();
     int elmHead[DSTS];
     int elmSize = 0;
     for (int i = 0; i < DSTS; i++)elmHead[i] = 0;
-    if (diffDir == NULL || diffDist == NULL)return;
     //roadDist[x1][y1] = 0;
     //priority_queue<locP, vector<locP>, greater<locP>> q;
     //locP locp1 = locP(x1, y1, &roadDist[x1][y1]);
@@ -410,20 +401,6 @@ void Building::diffuse()
             distX += nextX; distY += nextY;
         }
     }
-    for (int i = 0; i < MAPX; i++) {
-        delete[] diffDir[i];
-        delete[] dJump[i];
-        delete[] isDiff[i];
-        delete[] diffDist[i];
-    }
-    for (int i = 0; i < DSTS; i++) {
-        delete[] elm[i];
-    }
-    delete[] diffDir;
-    delete[] dJump;
-    delete[] isDiff;
-    delete[] diffDist;
-    delete[] elm;
 }
 
 void Building::getScore(){

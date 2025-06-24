@@ -46,7 +46,7 @@ void initItems() {
 }
 
 void bddf(int i) {
-	buildings[i].diffuse();
+	buildings[i].diffuse(i);
 }
 
 int main() {
@@ -78,10 +78,10 @@ int main() {
 		}
 		for (int i = 0; i < BD_MUN; i++) {
 			th[i].join();
-		}*/
+		}//*/
 		//*
 		for (int i = 0; i < BD_MUN; i++) {
-			buildings[i].diffuse();
+			buildings[i].diffuse(i);
 		}//*/
 		for (int i = 0; i < BD_MUN; i++) {
 			buildings[i].getForce();
