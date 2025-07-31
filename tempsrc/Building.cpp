@@ -14,14 +14,60 @@
 using namespace std;
 
 extern int map[MAPX][MAPY];
-extern int mapRoad[MAPX][MAPY];
+extern int mapFP[MAPX][MAPY];
 extern int8_t mapBD[MAPX][MAPY];
+extern int8_t mapRD[MAPX][MAPY];
 extern float mapVal1[MAPX][MAPY];
 extern float mapVal2[MAPX][MAPY];
 
-extern vecForce mapForce[MAPX][MAPY];
+extern vecForce mapForceBD[MAPX][MAPY];
+extern vecForce mapForceRD[MAPX][MAPY];
+extern Building GBuildings[BD_MUN];
 
-extern Building buildings[BD_MUN];
+int8_t BDdiffDir[8][MAPX][MAPY];
+int8_t BDdJump[8][MAPX][MAPY];
+bool BDisDiff[8][MAPX][MAPY];
+int BDdiffDist[8][MAPX][MAPY];
+loc BDelm[8][DSTS][ELMS];
+
+void initBDdiffuse()
+{
+    for(int t=0;t<8;t++){
+        for (int i = 0; i < MAPX; i++) {
+            for (int j = 0; j < MAPY; j++) {
+                //diffDir[i][j] = -1;
+                BDdJump[t][i][j] = -1;
+                BDisDiff[t][i][j] = false;
+                BDdiffDist[t][i][j] = INT_MAX;
+            }
+        }
+    }
+    for (int t = 0; t < 8; t++) {
+        for (int i = 0; i < DSTS; i++) {
+            for (int j = 0; j < ELMS; j++) {
+                BDelm[t][i][j] = loc();
+            }
+        }
+    }
+}
+
+void clearBDdiffuse(int trd)
+{
+    for (int i = 0; i < MAPX; i++) {
+        for (int j = 0; j < MAPY; j++) {
+            //diffDir[i][j] = -1;
+            BDdJump[trd][i][j] = -1;
+            BDisDiff[trd][i][j] = false;
+            BDdiffDist[trd][i][j] = INT_MAX;
+        }
+    }
+    /*
+    for (int i = 0; i < DSTS; i++) {
+        for (int j = 0; j < ELMS; j++) {
+            elm[i][j] = loc();
+        }
+    }*/
+}
 
 Building::Building()
 {
@@ -84,27 +130,30 @@ void Building::aloc(int iw, int il)
     getList();
 }
 
-void Building::getForce()
+void Building::clearForce()
 {
-    //getList();
     F0 = vecForce();
     Fr = 0.0;
     Fw = 0.0;
     Fl = 0.0;
+}
+
+void Building::getForce()
+{
     vecForce netF = vecForce();
     if (type == BD_NULL)return;
     if (x < 21) { F0.x += 2100.0 / x; v0.x = 0; }
     if (x > MAPX - 21) { F0.x -= 2100.0 / (MAPX - x); v0.x = 0; }
     if (y < 21) { F0.y += 2100.0 / y; v0.y = 0; }
     if (y > MAPY - 21) { F0.y -= 2100.0 / (MAPY - y); v0.y = 0; }
-    F0 += mapForce[x][y];
+    F0 += mapForceBD[x][y];
     //getList();
     for (loc k : listMap) {
         if (k.x + x<0 || k.x + x>=MAPX || k.y + y<0 || k.y + y>=MAPY)continue;
-        netF += mapForce[k.x + x][k.y + y];
-        Fr += k.x * mapForce[k.x + x][k.y + y].y - k.y * mapForce[k.x + x][k.y + y].x;
+        netF += mapForceBD[k.x + x][k.y + y];
+        Fr += k.x * mapForceBD[k.x + x][k.y + y].y - k.y * mapForceBD[k.x + x][k.y + y].x;
         vecForce o1 = vecForce(k.x, k.y); o1.routate(-r);
-        vecForce o2 = mapForce[k.x + x][k.y + y]; o2.routate(-r);
+        vecForce o2 = mapForceBD[k.x + x][k.y + y]; o2.routate(-r);
         if (o1.x * o2.x > 0) { Fw++; }
         if (o1.x * o2.x < 0) { Fw--; }
         if (o1.y * o2.y > 0) { Fl++; }
@@ -121,14 +170,14 @@ void Building::getForce()
     Fw += 1.25 * (ew - w) * (ew - w) * (ew - w);
     Fl += 1.25 * (ew - l) * (ew - l) * (ew - l);
     for (int i = 0; i < BD_MUN; i++) {
-        if (&buildings[i] == this)continue;
-        float dist = EucDist(x, y, buildings[i].x, buildings[i].y) + 1.0;
+        if (&GBuildings[i] == this)continue;
+        float dist = EucDist(x, y, GBuildings[i].x, GBuildings[i].y) + 1.0;
         float dist2 = 11.0 / (dist * dist);
         float dist3 = 111.0 / (dist * dist * dist);
         float dist4 = 111.0 / (dist * dist * dist * dist);
-        int dx = buildings[i].x - x;
-        int dy = buildings[i].y - y;
-        int IItype = (((int)type) << 8) + buildings[i].type;
+        int dx = GBuildings[i].x - x;
+        int dy = GBuildings[i].y - y;
+        int IItype = (((int)type) << 8) + GBuildings[i].type;
         float FK = 0.0;
         switch (IItype) {
         case 0x1010: FK = -0.1; break;
@@ -144,6 +193,7 @@ void Building::getForce()
         case 0x4030: FK = 1.1; break;
         case 0x4040: FK = -2.5; break;
         }
+        /*
         if (dist > 8) {
             if(FK > 0){
                 F0.x += FK * dx * dist2;
@@ -157,14 +207,14 @@ void Building::getForce()
         if (dist < 8) {
             F0.x -= dx * dist4;
             F0.y -= dy * dist4;
-        }
+        }*/
     }
 }
 
 void Building::getVelocity()
 {
-    v0 += F0 * 0.8;
-    vr += Fr * 0.001;
+    v0 += F0 * 1.8;
+    vr += Fr * 0.01;
     /*
     if (v0.x > 1)
         v0.x = sqrt(v0.x);
@@ -179,9 +229,10 @@ void Building::getVelocity()
         vr = 0.8*sqrt(vr);
     else
         vr = -0.8*sqrt(-vr);
-
+    /*
     vw += 0.05 * Fw;
     vl += 0.05 * Fl;
+    */
 }
 
 void Building::forceMove()
@@ -214,6 +265,7 @@ void Building::forceMove()
     if (vr < -1) {
         r -= 0.01; vr += 0.9;
     }
+    /*
     if (Fw > 0.0001) {
         w++; vw -= 0.9;
     }
@@ -225,7 +277,7 @@ void Building::forceMove()
     }
     if (Fl < -0.0001) {
         l--; 
-    }
+    }*/
 }
 
 void Building::gradianMove()
@@ -248,70 +300,74 @@ void Building::gradianMove()
     }
 }
 
-void Building::diffuse()
+void Building::diffuse(int trd)
 {
-    int8_t** diffDir = NULL;
-    int8_t** dJump = NULL;
-    bool** isDiff = NULL;
-    int** diffDist = NULL;
-    diffDir = new int8_t * [MAPX];
-    dJump = new int8_t * [MAPX];
-    isDiff = new bool* [MAPX];
-    diffDist = new int* [MAPX];
-    for (int i = 0; i < MAPX; i++) {
-        diffDir[i] = new int8_t[MAPY];
-        dJump[i] = new int8_t[MAPY];
-        isDiff[i] = new bool[MAPY];
-        diffDist[i] = new int[MAPY];
-    }
-    for (int i = 0; i < MAPX; i++) {
-        for (int j = 0; j < MAPY; j++) {
-            diffDir[i][j] = -1;
-            dJump[i][j] = -1;
-            isDiff[i][j] = false;
-            diffDist[i][j] = INT_MAX;
-        }
-    }
-    if (diffDir == NULL || diffDist == NULL)return;
+    clearBDdiffuse(trd);
+    int elmHead[DSTS];
+    int elmSize = 0;
+    for (int i = 0; i < DSTS; i++)elmHead[i] = 0;
     //roadDist[x1][y1] = 0;
-    priority_queue<locP, vector<locP>, greater<locP>> q;
+    //priority_queue<locP, vector<locP>, greater<locP>> q;
     //locP locp1 = locP(x1, y1, &roadDist[x1][y1]);
+    int nowDist = 0;
     for (loc k : listMap) {
         if (k.x + x < 0 || k.x + x >= MAPX || k.y + y < 0 || k.y + y >= MAPY)continue;
         //if (((k.x + x) & 1) != 0 || ((k.y + y) & 1) != 0)continue;
-        diffDist[k.x + x][k.y + y] = 0;
-        dJump[k.x + x][k.y + y] = 0;
-        locP locp1 = locP(k.x + x, k.y + y, &diffDist[k.x + x][k.y + y]);
-        q.push(locp1);
+        BDdiffDist[trd][k.x + x][k.y + y] = 0;
+        BDdJump[trd][k.x + x][k.y + y] = 0;
+        //-------------PUSH-------------
+        int elmPt = min(elmHead[0], (ELMS-1));
+        BDelm[trd][0][elmPt] = loc(k.x + x, k.y + y);
+        if (elmHead[0] < ELMS) {
+            elmHead[0]++;
+            elmSize++;
+        }
+        //-----^^^-----PUSH-----^^^-----
+        //q.push(locp1);
     }
     queue<loc> bdQ;
     int maxDist = 0;
-    while (!q.empty()) {
-        int thisX = q.top().x;
-        int thisY = q.top().y;
-        q.pop();
+    while (elmSize > 0) {
+        //-------------POP-------------
+        int CnowDist = nowDist & (DSTS-1);
+        if(elmHead[CnowDist] <= 0) {
+            nowDist++;
+            continue;
+        }
+        loc popLoc = BDelm[trd][CnowDist][elmHead[CnowDist] - 1];
+        int thisX = popLoc.x;
+        int thisY = popLoc.y;
+        elmHead[CnowDist]--;
+        elmSize--;
+        //-----^^^-----POP-----^^^-----
+        //q.pop();
         int jumpDist = 1;
-        if (isDiff[thisX][thisY])continue;
+        if (BDisDiff[trd][thisX][thisY])continue;
         if (thisX < 0 || thisX >= MAPX || thisY < 0 || thisY >= MAPY)continue;
-        isDiff[thisX][thisY] = true;
-        int prevDist = diffDist[thisX][thisY];
-        if (prevDist >= 50) {
+        BDisDiff[trd][thisX][thisY] = true;
+        int prevDist = BDdiffDist[trd][thisX][thisY];
+        if (prevDist >= 80) {
             jumpDist = 2;
             if ((thisX & 1) != 0 || (thisY & 1) != 0)continue;
         }
-        if (prevDist >= 100) {
+        if (prevDist >= 160) {
             jumpDist = 4;
             if ((thisX & 3) != 0 || (thisY & 3) != 0)continue;
         }
-        if (prevDist >= 400) {
+        if (prevDist >= 320) {
             jumpDist = 8;
             if ((thisX & 7) != 0 || (thisY & 7) != 0)continue;
         }
-        if (prevDist >= 800) {
+        if (prevDist >= 640) {
             jumpDist = 16;
             if ((thisX & 15) != 0 || (thisY & 15) != 0)continue;
         }
-        if (mapBD[thisX][thisY] > 0)bdQ.push(loc(thisX, thisY));
+        if (prevDist >= 1280) {
+            jumpDist = 32;
+            if ((thisX & 31) != 0 || (thisY & 31) != 0)continue;
+        }
+        if (mapBD[thisX][thisY] > 0)
+            bdQ.push(loc(thisX, thisY));
         for (int8_t dir = 0; dir < 16; dir++) {
             int d1 = 12; int d2 = 17; int d3 = 27;
             int dist = d1;
@@ -322,26 +378,39 @@ void Building::diffuse()
             nextX *= jumpDist; nextY *= jumpDist;
             nextX += thisX; nextY += thisY;
             if (nextX < 0 || nextX >= MAPX || nextY < 0 || nextY >= MAPY)continue;
-            if (isDiff[nextX][nextY])continue;
+            if (BDisDiff[trd][nextX][nextY])continue;
             int dh = abs(map[thisX][thisY] - map[nextX][nextY]) * abs(map[thisX][thisY] - map[nextX][nextY]);
             //int dh = 100/(map[lx][ly]+1);
             dist = dist + dh;
-            if (mapBD[nextX][nextY] > 0) { dist == 1000; }
+            if (mapBD[nextX][nextY] > 0) { dist = 512; }
+            if (mapRD[nextX][nextY] > 0) { dist =1; }
             //dist *= jumpDist;
+            dist = min(dist, DSTS-1);
+            int ddist = dist;
             dist += prevDist;
-            if (diffDist[nextX][nextY] > dist) {
-                diffDir[nextX][nextY] = dir;
-                diffDist[nextX][nextY] = dist;
-                dJump[nextX][nextY] = jumpDist;
-                q.push(locP(nextX, nextY, &diffDist[nextX][nextY]));
+            if (BDdiffDist[trd][nextX][nextY] > dist) {
+                BDdiffDir[trd][nextX][nextY] = dir;
+                BDdiffDist[trd][nextX][nextY] = dist;
+                BDdJump[trd][nextX][nextY] = jumpDist;
+                //-------------PUSH-------------
+                int nextDist = nowDist + ddist;
+                int CnextDist = nextDist & (DSTS-1);
+                int elmPt = min(elmHead[CnextDist], (ELMS-1));
+                BDelm[trd][CnextDist][elmPt] = loc(nextX, nextY);
+                if (elmHead[CnextDist] < ELMS) {
+                    elmHead[CnextDist]++;
+                    elmSize++;
+                }
+                //-----^^^-----PUSH-----^^^-----
+                //q.push(locP(nextX, nextY, &diffDist[nextX][nextY]));
             }
         }
         /*
         DWORD* dst = GetImageBuffer(NULL);
         for (int iy = 0; iy < MAPX; iy++) {
             for (int ix = 0; ix < MAPY; ix++) {
-                if (diffDist[ix][iy] < INT_MAX)
-                    dst[ix] = diffDist[ix][iy];
+                if (diffDist[trd][ix][iy] < INT_MAX)
+                    dst[ix] = diffDist[trd][ix][iy];
                 //if (dJump[ix][iy] > 0)dst[ix] = GREEN;
             }
             dst += SCRX;
@@ -350,29 +419,28 @@ void Building::diffuse()
         FlushBatchDraw();
         //*/
     }
+    vecForce pullF = vecForce();
     while (!bdQ.empty()) {
         int distX = bdQ.front().x;
         int distY = bdQ.front().y;
         bdQ.pop();
-        while (dJump[distX][distY] != 0) {
+        while (BDdJump[trd][distX][distY] != 0) {
             int nextX = 0; int nextY = 0;
-            mapRoad[distX][distY]++;
-            map16Dir(diffDir[distX][distY], &nextX, &nextY);
+            mapFP[distX][distY]++;
+            map16Dir(BDdiffDir[trd][distX][distY], &nextX, &nextY);
             nextX = -nextX; nextY = -nextY;
-            nextX *= dJump[distX][distY]; nextY *= dJump[distX][distY];
+            nextX *= BDdJump[trd][distX][distY]; nextY *= BDdJump[trd][distX][distY];
             distX += nextX; distY += nextY;
+            if (BDdJump[trd][distX][distY] == 0) {
+                int dfx = 0; int dfy = 0;
+                map16Dir(BDdiffDir[trd][distX - nextX][distY - nextY], &dfx, &dfy);
+                mapForceBD[distX][distY] += vecForce(dfx, dfy);
+                pullF.x += dfx;
+                pullF.y += dfy;
+            }
         }
     }
-    for (int i = 0; i < MAPX; i++) {
-        delete[] diffDir[i];
-        delete[] dJump[i];
-        delete[] isDiff[i];
-        delete[] diffDist[i];
-    }
-    delete[] diffDir;
-    delete[] dJump;
-    delete[] isDiff;
-    delete[] diffDist;
+    //F0 += pullF * 0.7;
 }
 
 void Building::getScore(){
@@ -381,9 +449,9 @@ void Building::getScore(){
     int bdXX = 0;
     int dd = 0;
     for (int i = 0; i < BD_MUN; i++) {
-        if (&buildings[i] == this)continue;
-        bdXX += getIntersect(buildings[i]);
-        int ddd = EucDist(x, y, buildings[i].x, buildings[i].y);
+        if (&GBuildings[i] == this)continue;
+        bdXX += getIntersect(GBuildings[i]);
+        int ddd = EucDist(x, y, GBuildings[i].x, GBuildings[i].y);
         dd += ddd;
     }/*
     getList2x();
@@ -542,6 +610,6 @@ void Building::writeForce()
         if (k.x + x<0 || k.x + x>=MAPX || k.y + y<0 || k.y + y>=MAPY)continue;
         vecForce f = vecForce(k.x, k.y); 
         //f.sqrmol();
-        mapForce[k.x + x][k.y + y] += f * 115.7;
+        mapForceBD[k.x + x][k.y + y] += f * 115.7;
     }
 }

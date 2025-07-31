@@ -5,211 +5,346 @@
 #include "mathd.h"
 #include "EXgraphic.h"
 #include <cstdint>
+#include <cmath>
+#include <forward_list>
 #include "SetList.h"
 #include <queue>
+#include "PhySim.h"
+#include "Building.h"
+
 using namespace std;
 
 extern int map[MAPX][MAPY];
-extern int mapRoad[MAPX][MAPY];
+extern int mapFP[MAPX][MAPY];
 extern int8_t mapBD[MAPX][MAPY];
+extern int8_t mapRD[MAPX][MAPY];
 
-#define FR_ISWRITE 0b10000000
-#define FR_ISDIFF1 0b1000000
-#define FR_ISDIFF2 0b100000
-#define FR_IS2 0b10000
+extern vecForce mapForceBD[MAPX][MAPY];
+extern vecForce mapForceRD[MAPX][MAPY];
+extern Building GBuildings[BD_MUN];
+extern Road GRoads[RD_MUN];
 
-//int8_t roadDir[MAPX][MAPY];
-//int roadDist[MAPX][MAPY];
-/*
-struct roadDistCompare {
-	bool operator()(loc* a, loc* b) {
-		return roadDist[a->x][a->y] > roadDist[b->x][b->y];
-	}
-};*/
+int8_t RDdiffDir[8][MAPX][MAPY];
+int8_t RDdJump[8][MAPX][MAPY];
+bool RDisDiff[8][MAPX][MAPY];
+int RDdiffDist[8][MAPX][MAPY];
+loc RDelm[8][DSTS][ELMS];
 
-void findRoad(int x1, int y1, int x2, int y2)
-{
-	uint8_t** roadDir = NULL;
-	int** roadDist = NULL;
-	roadDir = new uint8_t *[MAPX];
-	roadDist = new int *[MAPX];
-	for (int i = 0; i < MAPX; i++) {
-		roadDir[i] = new uint8_t[MAPY];
-		roadDist[i] = new int[MAPY];
-	}
-	for (int i = 0; i < MAPX; i++) {
-		for (int j = 0; j < MAPY; j++) {
-			roadDir[i][j] = 0;
-			roadDist[i][j] = INT_MAX;
-		}
-	}
-	putSplt(540, 20, YELLOW); FlushBatchDraw();
-	if (roadDir == NULL || roadDist == NULL)return;
-	if (x1 == x2 && y1 == y2)return;
-	if (x1<0 || x2<0 || y1<0 || y2<0 || x1>MAPX || x2>MAPX || y1>MAPY || y2>MAPY)return;
-	//clearFindRoad();
-	roadDist[x1][y1] = 0;
-	roadDist[x2][y2] = 0;
-	int met1X = -1; int met1Y = -1;
-	int met2X = -1; int met2Y = -1;
-	bool isMet = false;
-	priority_queue<locP, vector<locP>, greater<locP>> q1;
-	priority_queue<locP, vector<locP>, greater<locP>> q2;
-	locP locp1 = locP(x1, y1, &roadDist[x1][y1]);
-	locP locp2 = locP(x2, y2, &roadDist[x2][y2]);
-	q1.push(locp1);
-	q2.push(locp2);
-	while ((!q1.empty())&& (!q2.empty())) {
-		//ROADDIR(int8_t):  isWrite_  isDiff1_  isDiff2_  1or2_(0or1)  direction_ _ _ _
-		int xx1 = q1.top().x;
-		int yy1 = q1.top().y;
-		q1.pop();
-		if (xx1 < 0 || xx1 >= MAPX || yy1 < 0 || yy1 >= MAPY)continue;
-		//if (isDiff[xx1][yy1]==1)continue;
-		if ((roadDir[xx1][yy1] & FR_ISDIFF1) == FR_ISDIFF1)continue;
-		roadDir[xx1][yy1] += FR_ISDIFF1;
-		int prevDist = roadDist[xx1][yy1];
-		for (uint8_t dir = 0; dir < 16; dir++) {
-			uint8_t rdir = FR_ISWRITE + dir;
-			int d1 = 12; int d2 = 17; int d3 = 27;
-			int dist = d1;
-			if ((dir & 0b10) == 0b10)dist = d2;
-			if ((dir & 0b1) == 1)dist = d3;
-			int lx = 0; int ly = 0;
-			map16Dir(dir, &lx, &ly);
-			lx *= 4; ly *= 4;
-			lx += xx1; ly += yy1;
-			if (lx < 0 || lx >= MAPX || ly < 0 || ly >= MAPY)continue;
-			if ((roadDir[lx][ly] & FR_IS2) == FR_IS2 &&
-				(roadDir[lx][ly] & FR_ISWRITE) == FR_ISWRITE) {
-				met1X = xx1; met1Y = yy1;
-				met2X = lx; met2Y = ly;
-				isMet = true;
-				break;
-			}
-			//if (isDiff[lx][ly]==1)continue;
-			if ((roadDir[lx][ly] & FR_ISDIFF1) == FR_ISDIFF1)continue;
-			//if (OctDist(lx, ly, x1, y1) + OctDist(lx, ly, x2, y2) > 1.4* OctDist(x1, y1, x2, y2))continue;
-			if (OctDist(lx, ly, x1, y1) + OctDist(lx, ly, x2, y2) > 1.5* OctDist(x1, y1, x2, y2)+50)continue;
-			int dh = abs(map[xx1][yy1] - map[lx][ly])* abs(map[xx1][yy1] - map[lx][ly]);
-			//int dh = 100/(map[lx][ly]+1);
-			dist = (dist * 2 + dh) / (1 + mapRoad[lx][ly]) + dh;
-			if (mapBD[lx][ly] > 0) { dist += 1000; }
-			dist += prevDist;
-			if(roadDist[lx][ly]>dist){
-				roadDir[lx][ly] = rdir;
-				roadDist[lx][ly] = dist;
-				q1.push(locP(lx, ly, &roadDist[lx][ly]));
-			}
-		}
-		if (isMet)break;
-		//-------------------------------------------------------------------------------------
-		int xx2 = q2.top().x;
-		int yy2 = q2.top().y;
-		q2.pop();
-		if (xx2 < 0 || xx2 >= MAPX || yy2 < 0 || yy2 >= MAPY)continue;
-		//if (isDiff[xx2][yy2]==3)continue;
-		if ((roadDir[xx2][yy2] & FR_ISDIFF2) == FR_ISDIFF2)continue;
-		roadDir[xx2][yy2] += FR_ISDIFF2;
-		int prevDist2 = roadDist[xx2][yy2];
-		for (uint8_t dir = 0; dir < 16; dir++) {
-			uint8_t rdir = FR_ISWRITE + FR_IS2 + dir;
-			int d1 = 12; int d2 = 17; int d3 = 27;
-			int dist = d1;
-			if ((dir & 0b10) == 0b10)dist = d2;
-			if ((dir & 0b1) == 1)dist = d3;
-			int lx = 0; int ly = 0;
-			map16Dir(dir, &lx, &ly);
-			lx *= 4; ly *= 4;
-			lx += xx2; ly += yy2;
-			if (lx < 0 || lx >= MAPX || ly < 0 || ly >= MAPY)continue;
-			if ((roadDir[lx][ly] & FR_IS2) == 0 &&
-				(roadDir[lx][ly] & FR_ISWRITE) == FR_ISWRITE) {
-				met1X = lx; met1Y = ly;
-				met2X = xx2; met2Y = yy2;
-				isMet = true;
-				break;
-			}
-			//if (isDiff[lx][ly]==3)continue;
-			if ((roadDir[lx][ly] & FR_ISDIFF2) == FR_ISDIFF2)continue;
-			//if (OctDist(lx, ly, x1, y1) + OctDist(lx, ly, x2, y2) > 1.5 * OctDist(x1, y1, x2, y2) + 50)continue;
-			int dh = abs(map[xx2][yy2] - map[lx][ly]) * abs(map[xx2][yy2] - map[lx][ly]);
-			//int dh = 100/(map[lx][ly]+1);
-			dist = (dist * 2 + dh) / (1 + mapRoad[lx][ly]) + dh;
-			if (mapBD[lx][ly] > 0) { dist += 1000; }
-			dist += prevDist2;
-			if (roadDist[lx][ly] > dist) {
-				roadDir[lx][ly] = rdir;
-				roadDist[lx][ly] = dist;
-				q2.push(locP(lx, ly, &roadDist[lx][ly]));
-			}
-		}
-		if (isMet)break;
-		/*
-		DWORD* dst = GetImageBuffer(NULL);
-		for (int iy = 0; iy < MAPX; iy++) {
-			for (int ix = 0; ix < MAPY; ix++) {
-				if(roadDist[ix][iy]<INT_MAX)
-				dst[ix] = roadDist[ix][iy];
-			}
-			dst += SCRX;
-		}
-		//putpixel(520, q.size()/4, RED);
-		//putpixel(521, q.size()/4, RED);
-		//putpixel(522, q.size()/4, RED);
-		FlushBatchDraw();
-		//*/
-		//if (xx1 == x2 && yy1 == y2)break;
-	}
-	if (met1X == -1 || met1Y == -1 || met2X == -1 || met2Y == -1)return;
-	int lx1m = met1X; int ly1m = met1Y;
-	int lx2m = met2X; int ly2m = met2Y;
-	while (true) {
-		if (lx1m != x1 || ly1m != y1) {
-			uint8_t dir = roadDir[lx1m][ly1m];
-			mapRoad[lx1m][ly1m]++;
-			mapRoad[lx1m + 1][ly1m + 1]++; mapRoad[lx1m - 1][ly1m - 1]++;
-			mapRoad[lx1m - 1][ly1m + 1]++; mapRoad[lx1m + 1][ly1m - 1]++;
-			int lx = 0; int ly = 0;
-			map16Dir(dir, &lx, &ly);
-			lx *= 4; ly *= 4;
-			lx1m -= lx; ly1m -= ly;
-		}
-		if (lx2m != x2 || ly2m != y2) {
-			uint8_t dir = roadDir[lx2m][ly2m];
-			mapRoad[lx2m][ly2m]++;
-			mapRoad[lx2m + 1][ly2m + 1]++; mapRoad[lx2m - 1][ly2m - 1]++;
-			mapRoad[lx2m - 1][ly2m + 1]++; mapRoad[lx2m + 1][ly2m - 1]++;
-			int lx = 0; int ly = 0;
-			map16Dir(dir, &lx, &ly);
-			lx *= 4; ly *= 4;
-			lx2m -= lx; ly2m -= ly;
-		}
-		if (lx1m == x1 && ly1m == y1 && lx2m == x2 && ly2m == y2)break;
-		/*
-		RenderMap();
-		putSpot(x1, y1, GREEN);
-		putSpot(x2, y2, BLUE);
-		putSpot(lx1m, ly1m, RED);
-		putSpot(lx2m, ly2m, RED);
-		FlushBatchDraw();
-		//Sleep(10/(1+mapRoad[lx2][ly2]));
-		//*/
-	}
-	
-	for (int i = 0; i < MAPX; i++) {
-		delete[] roadDir[i];
-		delete[] roadDist[i];
-	}
-	delete[] roadDir;
-	delete[] roadDist;
+void initRDdiffuse(){
+    for (int t = 0; t < 8; t++) {
+        for (int i = 0; i < MAPX; i++) {
+            for (int j = 0; j < MAPY; j++) {
+                RDdJump[t][i][j] = -1;
+                RDisDiff[t][i][j] = false;
+                RDdiffDist[t][i][j] = INT_MAX;
+            }
+        }
+    }
+    for (int t = 0; t < 8; t++) {
+        for (int i = 0; i < DSTS; i++) {
+            for (int j = 0; j < ELMS; j++) {
+                RDelm[t][i][j] = loc();
+            }
+        }
+    }
 }
-/*
-void clearFindRoad(){
-	for (int x = 0; x < MAPX; x++) {
-		for (int y = 0; y < MAPY; y++) {
-			roadDir[x][y] = -1;
-			roadDist[x][y] = INT_MAX;
+
+void clearRDdiffuse(int trd){
+    for (int i = 0; i < MAPX; i++) {
+        for (int j = 0; j < MAPY; j++) {
+            RDdJump[trd][i][j] = -1;
+            RDisDiff[trd][i][j] = false;
+            RDdiffDist[trd][i][j] = INT_MAX;
+        }
+    }
+}
+
+Road::Road()
+{
+	x = 0; y = 0; r = 0; w = 0; l = 0; islife = false; type = 0;
+	F0 = vecForce(); Fr = 0.0; Fw = 0.0; Fl = 0.0; v0 = vecForce(); vr = 0.0; vw = 0.0; vl = 0.0;
+}
+
+Road::Road(int16_t x0, int16_t y0, float r0, int8_t w0, int8_t l0, int8_t ty0)
+{
+	x = x0; y = y0; r = r0; w = w0; l = l0; islife = true; type = ty0;
+	F0 = vecForce(); Fr = 0.0; Fw = 0.0; Fl = 0.0; v0 = vecForce(); vr = 0.0; vw = 0.0; vl = 0.0;
+	getList();
+}
+
+void Road::getList()
+{
+	listMap.clear();
+	float cosr = cos(r);
+	float sinr = sin(r);
+	int x1 = w * cosr - l * sinr;
+	int x4 = w * cosr + l * sinr; int x3 = -x1; int x2 = -x4;
+	int y1 = l * cosr + w * sinr;
+	int y2 = l * cosr - w * sinr; int y3 = -y1; int y4 = -y2;
+	int b1 = min(min(x1, x2), min(x3, x4)); int b2 = max(max(x1, x2), max(x3, x4));
+	int t1 = min(min(y1, y2), min(y3, y4)); int t2 = max(max(y1, y2), max(y3, y4));
+	for (int i = b1; i < b2; i++) {
+		for (int j = t1; j < t2; j++) {
+			if (j * (x2 - x1) + x1 * y2 > i * (y2 - y1) + x2 * y1
+				&& j * (x4 - x3) + x3 * y4 > i * (y4 - y3) + x4 * y3
+				&& j * (x2 - x3) + x3 * y2 < i * (y2 - y3) + x2 * y3
+				&& j * (x4 - x1) + x1 * y4 < i * (y4 - y1) + x4 * y1) {
+				listMap.push_front(loc(i, j));
+			}
 		}
 	}
-}*/
+}
+
+
+void Road::clearForce()
+{
+	F0 = vecForce();
+	Fr = 0.0;
+	Fw = 0.0;
+	Fl = 0.0;
+}
+
+void Road::getForce()
+{
+	vecForce netF = vecForce();
+	if (type == BD_NULL)return;
+	if (x < 21) { F0.x += 2100.0 / x; v0.x = 0; }
+	if (x > MAPX - 21) { F0.x -= 2100.0 / (MAPX - x); v0.x = 0; }
+	if (y < 21) { F0.y += 2100.0 / y; v0.y = 0; }
+	if (y > MAPY - 21) { F0.y -= 2100.0 / (MAPY - y); v0.y = 0; }
+	F0 += mapForceRD[x][y];
+	//getList();
+	for (loc k : listMap) {
+		if (k.x + x < 0 || k.x + x >= MAPX || k.y + y < 0 || k.y + y >= MAPY)continue;
+		netF += mapForceRD[k.x + x][k.y + y];
+		Fr += k.x * mapForceRD[k.x + x][k.y + y].y - k.y * mapForceRD[k.x + x][k.y + y].x;
+		vecForce o1 = vecForce(k.x, k.y); o1.routate(-r);
+		vecForce o2 = mapForceRD[k.x + x][k.y + y]; o2.routate(-r);
+		if (o1.x * o2.x > 0) { Fw++; }
+		if (o1.x * o2.x < 0) { Fw--; }
+		if (o1.y * o2.y > 0) { Fl++; }
+		if (o1.y * o2.y < 0) { Fl--; }
+	}
+	F0 += netF * 0.01;
+	float ew = 1;
+	Fw += 1.25 * (ew - w) * (ew - w) * (ew - w);
+	Fl += 1.25 * (ew - l) * (ew - l) * (ew - l);
+}
+
+void Road::getVelocity()
+{
+	v0 += F0 * 1.8;
+	vr += Fr * 0.01;
+	/*
+	if (v0.x > 1)
+		v0.x = sqrt(v0.x);
+	if (v0.x < -1)
+		v0.x = -sqrt(-v0.x);
+	if (v0.y > 1)
+		v0.y = sqrt(v0.y);
+	if (v0.y < -1)
+		v0.y = -sqrt(-v0.y);*/
+	v0.sqrmol();
+	if (vr > 0)
+		vr = 0.8 * sqrt(vr);
+	else
+		vr = -0.8 * sqrt(-vr);
+	/*
+	vw += 0.05 * Fw;
+	vl += 0.05 * Fl;
+	*/
+}
+
+void Road::forceMove()
+{
+	//x += F0.x; y += F0.y;
+	/*
+	if (F0.x > 0)x++;
+	else if (F0.x < -0)x--;
+	if (F0.y > 0)y++;
+	else if (F0.y < -0)y--;
+	if (Fr > 0)r += 0.05;
+	else if (Fr < -0)r -= 0.05;*/
+	getVelocity();
+	float rs = 0.65;
+	if (v0.x > 1) {
+		x++; v0.x -= rs;
+	}
+	if (v0.x < -1) {
+		x--; v0.x += rs;
+	}
+	if (v0.y > 1) {
+		y++; v0.y -= rs;
+	}
+	if (v0.y < -1) {
+		y--; v0.y += rs;
+	}
+	if (vr > 1) {
+		r += 0.01; vr -= 0.9;
+	}
+	if (vr < -1) {
+		r -= 0.01; vr += 0.9;
+	}
+	/*
+	if (Fw > 0.0001) {
+		w++; vw -= 0.9;
+	}
+	if (Fw < -0.0001) {
+		w--;
+	}
+	if (Fl > 0.0001) {
+		l++; vl -= 0.9;
+	}
+	if (Fl < -0.0001) {
+		l--;
+	}*/
+}
+
+void Road::write() {
+	for (loc k : listMap) {
+		if (k.x + x < 0 || k.x + x >= MAPX || k.y + y < 0 || k.y + y >= MAPY)continue;
+		mapRD[k.x + x][k.y + y] = 1;
+	}
+	mapRD[x][y] = 1;
+}
+
+
+void Road::writeForce()
+{
+	//getList();
+	for (loc k : listMap) {
+		if (k.x + x < 0 || k.x + x >= MAPX || k.y + y < 0 || k.y + y >= MAPY)continue;
+		vecForce f = vecForce(k.x, k.y);
+		//f.sqrmol();
+		mapForceRD[k.x + x][k.y + y] += f * 115.7;
+	}
+}
+
+void Road::diffuse(int trd)
+{
+    clearRDdiffuse(trd);
+    int elmHead[DSTS]{};
+    int elmSize = 0;
+    int nowDist = 0;
+    for (loc k : listMap) {
+        if (k.x + x < 0 || k.x + x >= MAPX || k.y + y < 0 || k.y + y >= MAPY)continue;
+        RDdiffDist[trd][k.x + x][k.y + y] = 0;
+        RDdJump[trd][k.x + x][k.y + y] = 0;
+        //-------------PUSH-------------
+        int elmPt = min(elmHead[0], (ELMS - 1));
+        RDelm[trd][0][elmPt] = loc(k.x + x, k.y + y);
+        if (elmHead[0] < ELMS) {
+            elmHead[0]++;
+            elmSize++;
+        }
+        //-----^^^-----PUSH-----^^^-----
+    }
+    queue<loc> bdQ;
+    int maxDist = 0;
+    while (elmSize > 0) {
+        //-------------POP-------------
+        int CnowDist = nowDist & (DSTS - 1);
+        if (elmHead[CnowDist] <= 0) {
+            nowDist++;
+            continue;
+        }
+        loc popLoc = RDelm[trd][CnowDist][elmHead[CnowDist] - 1];
+        int thisX = popLoc.x;
+        int thisY = popLoc.y;
+        elmHead[CnowDist]--;
+        elmSize--;
+        //-----^^^-----POP-----^^^-----
+        int jumpDist = 1;
+        if (RDisDiff[trd][thisX][thisY])continue;
+        if (thisX < 0 || thisX >= MAPX || thisY < 0 || thisY >= MAPY)continue;
+        RDisDiff[trd][thisX][thisY] = true;
+        int prevDist = RDdiffDist[trd][thisX][thisY];
+        if (prevDist >= 80) {
+            jumpDist = 2;
+            if ((thisX & 1) != 0 || (thisY & 1) != 0)continue;
+        }
+        if (prevDist >= 160) {
+            jumpDist = 4;
+            if ((thisX & 3) != 0 || (thisY & 3) != 0)continue;
+        }
+        if (prevDist >= 320) {
+            jumpDist = 8;
+            if ((thisX & 7) != 0 || (thisY & 7) != 0)continue;
+        }
+        if (prevDist >= 640) {
+            jumpDist = 16;
+            if ((thisX & 15) != 0 || (thisY & 15) != 0)continue;
+        }
+        if (prevDist >= 1280) {
+            jumpDist = 32;
+            if ((thisX & 31) != 0 || (thisY & 31) != 0)continue;
+        }
+        if (mapBD[thisX][thisY] > 0)
+            bdQ.push(loc(thisX, thisY));
+        for (int8_t dir = 0; dir < 16; dir++) {
+            int d1 = 12; int d2 = 17; int d3 = 27;
+            int dist = d1;
+            if ((dir & 0b10) == 0b10)dist = d2;
+            if ((dir & 0b1) == 1)dist = d3;
+            int nextX = 0; int nextY = 0;
+            map16Dir(dir, &nextX, &nextY);
+            nextX *= jumpDist; nextY *= jumpDist;
+            nextX += thisX; nextY += thisY;
+            if (nextX < 0 || nextX >= MAPX || nextY < 0 || nextY >= MAPY)continue;
+            if (RDisDiff[trd][nextX][nextY])continue;
+            int dh = abs(map[thisX][thisY] - map[nextX][nextY]) * abs(map[thisX][thisY] - map[nextX][nextY]);
+            //int dh = 100/(map[lx][ly]+1);
+            dist = dist + dh;
+            if (mapRD[nextX][nextY] > 0) { dist = 1; }
+            if (mapBD[nextX][nextY] > 0) { dist = 512; }
+            //dist *= jumpDist;
+            dist = min(dist, DSTS - 1);
+            int ddist = dist;
+            dist += prevDist;
+            if (RDdiffDist[trd][nextX][nextY] > dist) {
+                RDdiffDir[trd][nextX][nextY] = dir;
+                RDdiffDist[trd][nextX][nextY] = dist;
+                RDdJump[trd][nextX][nextY] = jumpDist;
+                //-------------PUSH-------------
+                int nextDist = nowDist + ddist;
+                int CnextDist = nextDist & (DSTS - 1);
+                int elmPt = min(elmHead[CnextDist], (ELMS - 1));
+                RDelm[trd][CnextDist][elmPt] = loc(nextX, nextY);
+                if (elmHead[CnextDist] < ELMS) {
+                    elmHead[CnextDist]++;
+                    elmSize++;
+                }
+                //-----^^^-----PUSH-----^^^-----
+            }
+        }
+    }
+    //Clear the queue
+    vecForce pullF = vecForce();
+    while (!bdQ.empty()) {
+        int distX = bdQ.front().x;
+        int distY = bdQ.front().y;
+        bdQ.pop();
+        bool change_in_BD = false;
+        int8_t prev_BD = mapBD[distX][distY];
+        //-----REVERSE-----
+        while (RDdJump[trd][distX][distY] != 0) {
+            int8_t curn_BD = mapBD[distX][distY];
+            if (curn_BD != prev_BD)change_in_BD = true;
+            //avoid reverse in one BD
+            int nextX = 0; int nextY = 0;
+            mapFP[distX][distY]++;
+            map16Dir(RDdiffDir[trd][distX][distY], &nextX, &nextY);
+            nextX = -nextX; nextY = -nextY;
+            nextX *= RDdJump[trd][distX][distY]; nextY *= RDdJump[trd][distX][distY];
+            distX += nextX; distY += nextY;
+            if (RDdJump[trd][distX][distY] == 0 && change_in_BD) {
+                int dfx = 0; int dfy = 0;
+                map16Dir(RDdiffDir[trd][distX - nextX][distY - nextY], &dfx, &dfy);
+                mapForceRD[distX][distY] += vecForce(dfx, dfy);
+                pullF.x += dfx;
+                pullF.y += dfy;
+            }
+        }
+    }
+    //F0 += pullF * 0.7;
+}

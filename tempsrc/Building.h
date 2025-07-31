@@ -10,6 +10,10 @@
 
 using namespace std;
 
+void initBDdiffuse();
+
+void clearBDdiffuse(int trd);
+
 class Building {
 public:
 	int16_t x;
@@ -33,11 +37,12 @@ public:
 	Building();
 	Building(int16_t x0, int16_t y0, float r0, int8_t w0, int8_t l0, int8_t d0, int8_t ty0);
 	void aloc(int iw, int il);
+	void clearForce();
 	void getForce();
 	void getVelocity();
 	void forceMove();
 	void gradianMove();
-	void diffuse();
+	void diffuse(int trd);
 	void getScore();
 	void getList();
 	void getList2x();

@@ -7,16 +7,20 @@
 #include <vector>
 #include "PhySim.h"
 #include "Building.h"
+#include "Road.h"
 
 extern int map[MAPX][MAPY];
-extern int mapRoad[MAPX][MAPY];
+extern int mapFP[MAPX][MAPY];
 extern int8_t mapBD[MAPX][MAPY];
+extern int8_t mapRD[MAPX][MAPY];
 extern float mapVal1[MAPX][MAPY];
 extern float mapVal2[MAPX][MAPY];
 
-extern vecForce mapForce[MAPX][MAPY];
+extern vecForce mapForceBD[MAPX][MAPY];
+extern vecForce mapForceRD[MAPX][MAPY];
 
-extern Building buildings[BD_MUN];
+extern Building GBuildings[BD_MUN];
+extern Road GRoads[RD_MUN];
 
 IMAGE IMGmap;
 
@@ -59,14 +63,15 @@ void map16Dir(uint8_t dir, int* lx, int* ly)
 }
 
 void initmap() {
-	loadimage(&IMGmap, _T("tex\\map8.png"));
+	loadimage(&IMGmap, _T("tex\\map0.png"));
 	DWORD* imb = GetImageBuffer(&IMGmap);
 	int k = 0;
 	for (int x = 0; x < MAPX; x++) {
 		for (int y = 0; y < MAPY; y++) {
 			map[y][x] = imb[k] & 0xff;
-			mapRoad[y][x] = 0;
+			mapFP[y][x] = 0;
 			mapBD[y][x] = 0;
+			mapRD[y][x] = 0;
 			mapVal1[y][x] = 0;
 			mapVal2[y][x] = 0;
 			k++;
@@ -74,10 +79,10 @@ void initmap() {
 	}
 }
 
-void clearMapRoad() {
+void clearMapFP() {
 	for (int ix = 0; ix < MAPX; ix++) {
 		for (int iy = 0; iy < MAPY; iy++) {
-			mapRoad[ix][iy] = 0;
+			mapFP[ix][iy] = 0;
 		}
 	}
 }
@@ -86,6 +91,14 @@ void clearMapBD() {
 	for (int ix = 0; ix < MAPX; ix++) {
 		for (int iy = 0; iy < MAPY; iy++) {
 			mapBD[ix][iy] = 0;
+		}
+	}
+}
+
+void clearMapRD(){
+	for (int ix = 0; ix < MAPX; ix++) {
+		for (int iy = 0; iy < MAPY; iy++) {
+			mapRD[ix][iy] = 0;
 		}
 	}
 }
@@ -111,52 +124,18 @@ void writeMapForce()
 	for (int ix = 0; ix < MAPX; ix++) {
 		for (int iy = 0; iy < MAPY; iy++) {
 			//mapForce[ix][iy] = vecForce(0,512-iy)*55.0;
-			mapForce[ix][iy] = vecForce();
+			mapForceBD[ix][iy] = vecForce();
+			mapForceRD[ix][iy] = vecForce();
 		}
 	}
 	for (int bd = 0; bd < BD_MUN; bd++) {
-		buildings[bd].writeForce();
+		GBuildings[bd].writeForce();
+	}
+	for (int rd = 0; rd < RD_MUN; rd++) {
+		GRoads[rd].writeForce();
 	}
 }
 
-void genrMapVal1() {
-	for (int ix = 1; ix < MAPX-1; ix++) {
-		for (int iy = 1; iy < MAPY-1; iy++) {
-			int b = mapBD[ix][iy];
-			if (b <= 0)continue;
-			if (mapBD[ix + 1][iy] > 0 && mapBD[ix][iy + 1] > 0 && mapBD[ix - 1][iy] > 0 && mapBD[ix][iy - 1] > 0 &&
-				mapBD[ix + 1][iy + 1] > 0 && mapBD[ix - 1][iy - 1] > 0 && mapBD[ix + 1][iy - 1] > 0 && mapBD[ix - 1][iy + 1] > 0)
-				continue;
-			int w = b + 32;
-			for (int iix = ix - w; iix <= ix + w; iix++) {
-				for (int iiy = iy - w; iiy <= iy + w; iiy++) {
-					if (iix < 0 || iix >= MAPX || iiy < 0 || iiy >= MAPY)continue;
-					if (iix == ix && iiy == iy)continue;
-					float d = (1.0) / (0.1 + EucDist(ix, iy, iix, iiy));
-					mapVal1[iix][iiy] += d;
-				}
-			}
-		}
-	}
-}
-
-void genrMapVal2(){
-	for (int ix = 0; ix < MAPX; ix++) {
-		for (int iy = 0; iy < MAPY; iy++) {
-			int h = mapRoad[ix][iy];
-			if (h <= 0)continue;
-			int w = h + 24;
-			for (int iix = ix - w; iix <= ix + w; iix++) {
-				for (int iiy = iy - w; iiy <= iy + w; iiy++) {
-					if (iix < 0 || iix >= MAPX || iiy < 0 || iiy >= MAPY)continue;
-					if (iix == ix && iiy == iy)continue;
-					float d = (sqrt(h) + 1.0) / (0.1 + OctDist(ix, iy, iix, iiy));
-					mapVal2[iix][iiy] += d*d;
-				}
-			}
-		}
-	}
-}
 
 void RenderMap() {
 	DWORD* dst = GetImageBuffer(NULL);
@@ -172,9 +151,13 @@ void RenderMap() {
 				case BD_PROD:dst[ix] = 0x6666cc; break;
 				case BD_COMR:dst[ix] = 0xff6644; break;
 				case BD_SERV:dst[ix] = 0x66ff44; break;
+				case BD_ROAD:dst[ix] = 0x888899; break;
 				}
 			}
-			if(mapRoad[ix][iy]>0)dst[ix] = HSVtoRGB(229-220.0/mapRoad[ix][iy],0.88,0.70);
+			if (mapRD[ix][iy] > 0) {
+				dst[ix] = 0x888899;
+			}
+			if(mapFP[ix][iy]>0)dst[ix] = HSVtoRGB(229-220.0/mapFP[ix][iy],0.88,0.70);
 		}
 		dst += SCRX;
 	}

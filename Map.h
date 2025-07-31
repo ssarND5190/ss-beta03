@@ -55,19 +55,17 @@ void map16Dir(uint8_t dir, int* lx, int* ly);
 
 void initmap();
 
-void clearMapRoad();
+void clearMapFP();
 
 void clearMapBD();
+
+void clearMapRD();
 
 void clearMapVal1();
 
 void clearMapVal2();
 
 void writeMapForce();
-
-void genrMapVal1();
-
-void genrMapVal2();
 
 void RenderMap();
 
